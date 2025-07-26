@@ -19,7 +19,7 @@
     "deploymentEnabled": {
       "main": true,
       "preview": true,
-      "development": true
+      "development": false
     }
   },
   "env": {
