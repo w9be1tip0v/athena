@@ -1,0 +1,27 @@
+{
+  "crons": [
+    {
+      "path": "/api/payload-jobs/run",
+      "schedule": "0 0 * * *"
+    }
+  ],
+  "functions": {
+    "src/app/(payload)/api/[...slug]/route.ts": {
+      "maxDuration": 30
+    }
+  },
+  "build": {
+    "env": {
+      "NODE_VERSION": "22"
+    }
+  },
+  "git": {
+    "deploymentEnabled": {
+      "main": true,
+      "preview": true
+    }
+  },
+  "env": {
+    "NODE_ENV": "production"
+  }
+}
