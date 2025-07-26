@@ -1,6 +1,8 @@
-# Payload CMS Website Template
+# Payload Website Template
 
-A modern website template built with [Payload CMS](https://payloadcms.com) and [Next.js](https://nextjs.org).
+<!-- Vercel Deploy Test - Updated at 2025-07-26 -->
+
+This is a [Payload](https://github.com/payloadcms/payload) website template perfect for a personal site, blog, or any content-driven website.
 
 ## Features
 
