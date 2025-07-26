@@ -18,7 +18,8 @@
   "git": {
     "deploymentEnabled": {
       "main": true,
-      "preview": true
+      "preview": true,
+      "development": true
     }
   },
   "env": {
