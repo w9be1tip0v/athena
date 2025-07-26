@@ -11,6 +11,11 @@ on:
       - main
       - preview
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 jobs:
   # Development branch - Run tests only, no deployment
   development:

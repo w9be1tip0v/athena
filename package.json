@@ -18,6 +18,7 @@
     "payload": "cross-env NODE_OPTIONS=--no-deprecation payload",
     "reinstall": "cross-env NODE_OPTIONS=--no-deprecation rm -rf node_modules && rm -f bun.lock && bun install",
     "start": "cross-env NODE_OPTIONS=--no-deprecation next start",
+    "test": "echo \"Info: No tests specified\" && exit 0",
     "deploy:preview": "git checkout preview && git merge development && git push origin preview",
     "deploy:production": "git checkout main && git merge preview && git push origin main",
     "env:check": "node -e \"console.log('Environment:', process.env.NODE_ENV || 'development'); console.log('Vercel Env:', process.env.VERCEL_ENV || 'local');\""
