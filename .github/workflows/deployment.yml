@@ -11,6 +11,11 @@ on:
       - main
       - preview
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 jobs:
   # Development branch - Run tests only, no deployment
   development:
@@ -39,6 +44,10 @@ jobs:
         run: |
           echo "🔧 Development branch - No deployment"
           echo "✅ Code validation completed"
+          echo "📋 Next steps:"
+          echo "  1. Create PR: development → preview"
+          echo "  2. Test in preview environment"
+          echo "  3. Create PR: preview → main for production"
 
   # Preview branch - Deploy to Vercel Preview
   preview:
@@ -54,15 +63,30 @@ jobs:
           else
             echo "⚠️ VERCEL_PREVIEW_DEPLOY_HOOK not configured - using Vercel Git integration"
           fi
+          echo "📋 Ready for production:"
+          echo "  Create PR: preview → main to deploy to production"
 
-  # Main branch - Deploy to Vercel Production
+  # Main branch - Production deployment with warning for direct push
   production:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to Vercel Production
+      - name: Check deployment source
         run: |
           echo "🚀 Deploying to Vercel Production Environment"
+
+          # Check if this is a direct push (not from PR merge)
+          if [ "${{ github.event_name }}" = "push" ] && [ -z "${{ github.event.pull_request }}" ]; then
+            echo "⚠️  WARNING: Direct push to main branch detected!"
+            echo "🔒 RECOMMENDED WORKFLOW:"
+            echo "  1. development → preview (PR)"
+            echo "  2. preview → main (PR)"
+            echo ""
+            echo "📋 Consider setting up branch protection rules:"
+            echo "  Settings → Branches → Add protection rule for 'main'"
+            echo ""
+          fi
+
           if [ -n "${{ secrets.VERCEL_PRODUCTION_DEPLOY_HOOK }}" ]; then
             curl -X POST "${{ secrets.VERCEL_PRODUCTION_DEPLOY_HOOK }}"
             echo "✅ Production deployment triggered"
@@ -93,22 +117,65 @@ jobs:
           npm run lint || echo "Linting completed with warnings"
           npm test || echo "Testing completed with warnings"
 
+      - name: Validate PR flow
+        run: |
+          SOURCE="${{ github.head_ref }}"
+          TARGET="${{ github.base_ref }}"
+
+          echo "📋 PR Flow Validation:"
+          echo "  Source: $SOURCE → Target: $TARGET"
+
+          # Validate recommended flow
+          if [ "$SOURCE" = "development" ] && [ "$TARGET" = "preview" ]; then
+            echo "✅ Correct flow: development → preview"
+          elif [ "$SOURCE" = "preview" ] && [ "$TARGET" = "main" ]; then
+            echo "✅ Correct flow: preview → main (production)"
+          elif [ "$TARGET" = "main" ] && [ "$SOURCE" != "preview" ]; then
+            echo "⚠️  Non-standard flow: $SOURCE → main"
+            echo "🔄 Recommended: $SOURCE → preview → main"
+          else
+            echo "ℹ️  Flow: $SOURCE → $TARGET"
+          fi
+
       - name: Comment on PR
         uses: actions/github-script@v7
         with:
           script: |
+            const source = '${{ github.head_ref }}';
+            const target = '${{ github.base_ref }}';
+
+            let flowStatus = '';
+            let deploymentInfo = '';
+
+            if (source === 'development' && target === 'preview') {
+              flowStatus = '✅ **Correct Flow**: Development → Preview';
+              deploymentInfo = '🔄 **Will deploy to Preview environment when merged**';
+            } else if (source === 'preview' && target === 'main') {
+              flowStatus = '✅ **Correct Flow**: Preview → Production';
+              deploymentInfo = '🚀 **Will deploy to Production environment when merged**';
+            } else if (target === 'main' && source !== 'preview') {
+              flowStatus = `⚠️ **Non-standard Flow**: ${source} → main`;
+              deploymentInfo = `🔄 **Recommended**: ${source} → preview → main`;
+            } else {
+              flowStatus = `ℹ️ **Flow**: ${source} → ${target}`;
+              deploymentInfo = target === 'preview' ? '🔄 **Will deploy to Preview**' : '🔧 **Development flow**';
+            }
+
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
               body: `## 🔍 Deployment Workflow Status
               
-              **Target Branch**: \`${{ github.base_ref }}\`
-              **Source Branch**: \`${{ github.head_ref }}\`
+              **Source Branch**: \`${source}\`
+              **Target Branch**: \`${target}\`
               
-              ${github.base_ref === 'main' ? '🚀 **Will deploy to Production when merged**' : 
-                github.base_ref === 'preview' ? '🔄 **Will deploy to Preview when merged**' : 
-                '🔧 **Development branch - No deployment**'}
+              ${flowStatus}
+              ${deploymentInfo}
+              
+              ### 📋 Recommended Development Flow:
+              1. \`development\` → \`preview\` (staging)
+              2. \`preview\` → \`main\` (production)
               
               ✅ Code validation completed`
             })
