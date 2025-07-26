@@ -6,22 +6,63 @@ FROM node:22.12.0-alpine AS base
 # Install dependencies only when needed
 FROM base AS deps
 # Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
-RUN apk add --no-cache libc6-compat
+RUN apk add --no-cache libc6-compat curl bash
 WORKDIR /app
 
+# Install Bun
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:${PATH}"
+
 # Install dependencies based on the preferred package manager
-COPY package.json yarn.lock* package-lock.json* pnpm-lock.yaml* ./
+COPY package.json yarn.lock* package-lock.json* pnpm-lock.yaml* bun.lock* ./
 RUN \
-  if [ -f yarn.lock ]; then yarn --frozen-lockfile; \
-  elif [ -f package-lock.json ]; then npm ci; \
+  if [ -f bun.lock ]; then bun install --frozen-lockfile; \
+  elif [ -f yarn.lock ]; then yarn --frozen-lockfile; \
   elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm i --frozen-lockfile; \
+  elif [ -f package-lock.json ]; then npm ci; \
   else echo "Lockfile not found." && exit 1; \
   fi
 
+# Development stage for Dev Container
+FROM base AS development
+RUN apk add --no-cache git bash sudo shadow curl
+
+# Use existing node user and make it compatible with vscode
+RUN usermod -l vscode node && \
+    groupmod -n vscode node && \
+    usermod -d /home/vscode -m vscode && \
+    usermod -s /bin/bash vscode && \
+    echo "vscode ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# Install Bun for development
+USER vscode
+WORKDIR /home/vscode
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/home/vscode/.bun/bin:${PATH}"
+
+# Set up workspace
+USER root
+RUN mkdir -p /workspace && chown vscode:vscode /workspace
+USER vscode
+WORKDIR /workspace
+
+# Copy dependencies from deps stage
+COPY --from=deps --chown=vscode:vscode /app/node_modules ./node_modules
+COPY --chown=vscode:vscode . .
+
+ENV NODE_ENV=development
+EXPOSE 3000
+CMD ["sleep", "infinity"]
 
 # Rebuild the source code only when needed
 FROM base AS builder
+RUN apk add --no-cache curl bash
 WORKDIR /app
+
+# Install Bun
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:${PATH}"
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
@@ -31,9 +72,10 @@ COPY . .
 # ENV NEXT_TELEMETRY_DISABLED 1
 
 RUN \
-  if [ -f yarn.lock ]; then yarn run build; \
-  elif [ -f package-lock.json ]; then npm run build; \
+  if [ -f bun.lock ]; then bun run build; \
+  elif [ -f yarn.lock ]; then yarn run build; \
   elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm run build; \
+  elif [ -f package-lock.json ]; then npm run build; \
   else echo "Lockfile not found." && exit 1; \
   fi
 

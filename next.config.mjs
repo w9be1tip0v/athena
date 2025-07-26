@@ -6,6 +6,9 @@ const nextConfig = {
     // Enable Web Vitals tracking
     webVitalsAttribution: ['CLS', 'LCP'],
   },
+  
+  // Enable standalone output for Docker
+  output: process.env.NODE_ENV === 'production' ? 'standalone' : undefined,
 }
 
 // Check if Sentry should be enabled
