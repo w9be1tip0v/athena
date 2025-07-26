@@ -10,12 +10,9 @@
     "usernamehw.errorlens",
     "streetsidesoftware.code-spell-checker",
     "ms-vscode.vscode-color",
-    "bradlc.vscode-tailwindcss",
     "prisma.prisma",
     "graphql.vscode-graphql",
     "ms-vscode.vscode-thunder-client"
   ],
-  "unwantedRecommendations": [
-    "ms-vscode.vscode-typescript"
-  ]
+  "unwantedRecommendations": ["ms-vscode.vscode-typescript"]
 }
