@@ -7,7 +7,7 @@
   "scripts": {
     "build": "cross-env NODE_OPTIONS=--no-deprecation next build",
     "postbuild": "next-sitemap --config next-sitemap.config.cjs",
-    "ci": "bun run build",
+    "ci": "cross-env NODE_OPTIONS=--no-deprecation bun run build",
     "dev": "cross-env NODE_OPTIONS=--no-deprecation next dev",
     "dev:prod": "cross-env NODE_OPTIONS=--no-deprecation rm -rf .next && bun run build && bun run start",
     "generate:importmap": "cross-env NODE_OPTIONS=--no-deprecation payload generate:importmap",
@@ -69,7 +69,6 @@
     "@types/react-dom": "^19.1.6",
     "autoprefixer": "^10.4.19",
     "checkly": "latest",
-    "copyfiles": "^2.4.1",
     "eslint": "^9.16.0",
     "eslint-config-next": "^15.4.4",
     "jiti": "^2",
@@ -87,5 +86,9 @@
     "@sentry/cli",
     "@vercel/speed-insights",
     "unrs-resolver"
-  ]
+  ],
+  "overrides": {
+    "@esbuild-kit/esm-loader": "npm:tsx@latest",
+    "@esbuild-kit/core-utils": "npm:tsx@latest"
+  }
 }
