@@ -2,11 +2,11 @@ services:
   # Dev Container app service
   app:
     build:
-      context: .
-      dockerfile: Dockerfile
-      target: development  # 開発用ターゲットを指定
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+      target: development # 開発用ターゲットを指定
     volumes:
-      - .:/workspace:cached
+      - ..:/workspace:cached
       - node_modules:/workspace/node_modules
     working_dir: /workspace
     command: sleep infinity
@@ -33,11 +33,12 @@ services:
     networks:
       - athena-network
     env_file:
-      - .env
+      - ../.env
 
 volumes:
   node_modules:
   postgres_data:
+
 
 networks:
   athena-network:
