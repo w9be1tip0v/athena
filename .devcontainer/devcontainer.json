@@ -15,9 +15,9 @@
       ]
     }
   },
-  "remoteUser": "node",
+  "remoteUser": "vscode",
   "remoteEnv": {
-    "PATH": "${containerEnv:PATH}:/home/node/.bun/bin"
+    "PATH": "${containerEnv:PATH}:/home/vscode/.bun/bin"
   },
   "postCreateCommand": "bash -lc 'if ! command -v bun >/dev/null 2>&1; then curl -fsSL https://bun.sh/install | bash; fi; export BUN_INSTALL=\"$HOME/.bun\"; export PATH=\"$BUN_INSTALL/bin:$PATH\"; bun install --no-save'"
 }

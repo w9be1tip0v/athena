@@ -10,8 +10,8 @@ services:
       - node_modules:/workspace/node_modules
     working_dir: /workspace
     command: sleep infinity
-    ports:
-      - '3000:3000'
+    expose:
+      - '3000'
     environment:
       - NODE_ENV=development
       - DATABASE_URI=postgres://postgres@postgres:5432/payload_db
@@ -22,8 +22,8 @@ services:
 
   postgres:
     image: postgres
-    ports:
-      - '54320:5432'
+    expose:
+      - '5432'
     environment:
       POSTGRES_USER: postgres
       POSTGRES_DB: payload_db # THIS MUST MATCH YOUR DB NAME IN .env
