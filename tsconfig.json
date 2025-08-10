@@ -43,7 +43,7 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     "config/redirects.js",
-    "config/next.config.js",
+    "config/next.config.mjs",
     "config/next-sitemap.config.cjs"
   ],
   "exclude": [

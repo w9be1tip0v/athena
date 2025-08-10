@@ -75,9 +75,9 @@ if (shouldUseSentry && hasSentryConfig) {
     },
   })
 } else {
-  console.log('⚠️ Sentry configuration incomplete - building without Sentry source map upload')
+  console.warn('Sentry configuration incomplete - building without Sentry source map upload')
   if (shouldUseSentry && !hasSentryConfig) {
-    console.log('💡 Set SENTRY_ORG and SENTRY_PROJECT environment variables to enable Sentry source maps')
+    console.info('Set SENTRY_ORG and SENTRY_PROJECT environment variables to enable Sentry source maps')
   }
 }
 
