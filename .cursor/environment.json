@@ -1,0 +1,17 @@
+{
+  "name": "Athena (Bun + Payload CMS + Astro)",
+  "user": "ubuntu",
+  "install": "bash .cursor/install.sh",
+  "start": "bash .cursor/start.sh",
+  "terminals": [
+    {
+      "name": "cms",
+      "command": "export PATH=\"$HOME/.bun/bin:$PATH\"; bun run dev:cms"
+    },
+    {
+      "name": "web",
+      "command": "export PATH=\"$HOME/.bun/bin:$PATH\"; bun run dev:web"
+    }
+  ],
+  "ports": [3000, 4321]
+}
