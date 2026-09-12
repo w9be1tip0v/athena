@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+# Idempotent Cloud Agent bootstrap for the Athena monorepo.
+# Installs the pinned toolchain (Bun + PostgreSQL 16), a local Postgres
+# cluster, workspace dependencies, dev env files, and the DB schema.
+# Safe to run repeatedly and against cached/snapshot state.
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$REPO_ROOT"
+
+export DEBIAN_FRONTEND=noninteractive
+PG_BIN="/usr/lib/postgresql/16/bin"
+PGDATA="$HOME/pgdata"
+PGSOCK="$HOME/pgsock"
+# Keep in sync with package.json's `packageManager` field.
+BUN_VERSION="1.3.5"
+
+# --- 1. Bun (pinned + integrity-verified) -----------------------------------
+# Download the exact pinned release from GitHub and verify its SHA-256 against
+# the published SHASUMS256.txt before use — no piping a remote script to a
+# shell, and no trusting whatever `bun` an image happens to ship.
+install_bun() {
+  local dest="$HOME/.bun/bin"
+  local target="bun-linux-x64"
+  # The default x64 build requires AVX2; fall back to the baseline build.
+  grep -qw avx2 /proc/cpuinfo || target="bun-linux-x64-baseline"
+  local base="https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}"
+  local tmp
+  tmp="$(mktemp -d)"
+  echo "[install] Downloading Bun ${BUN_VERSION} (${target})..."
+  curl -fsSL -o "$tmp/${target}.zip" "${base}/${target}.zip"
+  curl -fsSL -o "$tmp/SHASUMS256.txt" "${base}/SHASUMS256.txt"
+  ( cd "$tmp" && grep -E "  \*?${target}\.zip\$" SHASUMS256.txt | sha256sum -c - )
+  unzip -oq "$tmp/${target}.zip" -d "$tmp"
+  mkdir -p "$dest"
+  install -m 0755 "$tmp/${target}/bun" "$dest/bun"
+  ln -sf "$dest/bun" "$dest/bunx"
+  rm -rf "$tmp"
+}
+
+current_bun_version() {
+  local candidate="$HOME/.bun/bin/bun"
+  [ -x "$candidate" ] || candidate="$(command -v bun 2>/dev/null || true)"
+  [ -n "$candidate" ] && "$candidate" --version 2>/dev/null || true
+}
+
+if [ "$(current_bun_version)" != "$BUN_VERSION" ]; then
+  # `unzip` is required to unpack the release artifact.
+  command -v unzip >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq unzip; }
+  install_bun
+fi
+export PATH="$HOME/.bun/bin:$PATH"
+# Fail loudly if the pinned Bun is not the one now on PATH.
+ACTIVE_BUN="$(bun --version 2>/dev/null || true)"
+if [ "$ACTIVE_BUN" != "$BUN_VERSION" ]; then
+  echo "[install] ERROR: expected Bun ${BUN_VERSION} on PATH, found '${ACTIVE_BUN:-none}'." >&2
+  exit 1
+fi
+
+# --- 2. PostgreSQL 16 -------------------------------------------------------
+if [ ! -x "$PG_BIN/postgres" ]; then
+  echo "[install] Installing PostgreSQL 16..."
+  sudo apt-get update -qq
+  sudo apt-get install -y -qq postgresql-16 postgresql-client-16
+fi
+export PATH="$PG_BIN:$PATH"
+
+# --- 3. Local Postgres cluster (owned by the runtime user) ------------------
+mkdir -p "$PGSOCK"
+if [ ! -f "$PGDATA/PG_VERSION" ]; then
+  echo "[install] Initializing Postgres cluster at $PGDATA..."
+  initdb -D "$PGDATA" -U postgres --auth-local=trust --auth-host=trust >/dev/null
+  {
+    echo "port = 5432"
+    echo "listen_addresses = 'localhost'"
+    echo "unix_socket_directories = '$PGSOCK'"
+  } >> "$PGDATA/postgresql.conf"
+fi
+
+# Start Postgres just long enough to provision the database + schema.
+if ! pg_ctl -D "$PGDATA" status >/dev/null 2>&1; then
+  pg_ctl -D "$PGDATA" -l "$HOME/pg.log" -w start
+fi
+for _ in $(seq 1 30); do
+  psql -U postgres -h localhost -p 5432 -tc "SELECT 1" >/dev/null 2>&1 && break
+  sleep 1
+done
+psql -U postgres -h localhost -p 5432 -c "ALTER USER postgres WITH PASSWORD 'postgres';" >/dev/null 2>&1 || true
+psql -U postgres -h localhost -p 5432 -tc "SELECT 1 FROM pg_database WHERE datname='payload_db'" | grep -q 1 \
+  || psql -U postgres -h localhost -p 5432 -c "CREATE DATABASE payload_db;" >/dev/null
+
+# --- 4. Workspace dependencies ----------------------------------------------
+echo "[install] Installing workspace dependencies..."
+bun install --frozen-lockfile
+
+# --- 5. Local dev env files (never clobber existing) ------------------------
+# PREVIEW_SECRET / REVALIDATE_SECRET must be byte-identical across both apps.
+# When exactly one file already exists, reuse its shared secrets so the
+# CMS <-> web contract keeps working; otherwise generate a fresh set.
+read_env_value() { sed -n "s/^$2=//p" "$1" 2>/dev/null | head -n1; }
+
+if [ ! -f apps/cms/.env ] || [ ! -f apps/web/.env ]; then
+  echo "[install] Generating dev env files..."
+  existing=""
+  [ -f apps/cms/.env ] && existing="apps/cms/.env"
+  [ -f apps/web/.env ] && existing="apps/web/.env"
+  if [ -n "$existing" ]; then
+    echo "[install] Reusing shared secrets from ${existing}."
+    PREVIEW_SECRET="$(read_env_value "$existing" PREVIEW_SECRET)"
+    REVALIDATE_SECRET="$(read_env_value "$existing" REVALIDATE_SECRET)"
+  fi
+  PREVIEW_SECRET="${PREVIEW_SECRET:-$(openssl rand -hex 16)}"
+  REVALIDATE_SECRET="${REVALIDATE_SECRET:-$(openssl rand -hex 16)}"
+  PAYLOAD_SECRET="$(openssl rand -hex 24)"
+fi
+if [ ! -f apps/cms/.env ]; then
+  cat > apps/cms/.env <<EOF
+# Local development env (generated by .cursor/install.sh; gitignored)
+POSTGRES_URL=postgres://postgres:postgres@localhost:5432/payload_db
+PAYLOAD_SECRET=${PAYLOAD_SECRET}
+CMS_URL=http://localhost:3000
+WEB_URL=http://localhost:4321
+PREVIEW_SECRET=${PREVIEW_SECRET}
+REVALIDATE_SECRET=${REVALIDATE_SECRET}
+BLOB_READ_WRITE_TOKEN=
+DEPLOY_ENV=development
+EOF
+fi
+if [ ! -f apps/web/.env ]; then
+  cat > apps/web/.env <<EOF
+# Local development env (generated by .cursor/install.sh; gitignored)
+CMS_URL=http://localhost:3000
+WEB_URL=http://localhost:4321
+PREVIEW_SECRET=${PREVIEW_SECRET}
+REVALIDATE_SECRET=${REVALIDATE_SECRET}
+PAYLOAD_API_KEY=
+EOF
+fi
+
+# --- 6. Database schema ------------------------------------------------------
+# Invoke Payload migrate only when a migration in the worktree registry is not
+# yet applied, comparing migration *names* (not just counts) so a divergent set
+# still triggers a run. Skipping when everything is applied keeps re-runs fast
+# and avoids the advisory-lock wait if a Payload dev server is already attached.
+mapfile -t FILE_MIGRATIONS < <(
+  find apps/cms/src/migrations -maxdepth 1 -name '*.ts' ! -name 'index.ts' \
+    -exec basename {} .ts \; | sort
+)
+APPLIED_NAMES="$(psql -U postgres -h localhost -p 5432 -d payload_db -tAc \
+  "SELECT name FROM payload_migrations" 2>/dev/null || true)"
+
+NEED_MIGRATE=0
+for m in "${FILE_MIGRATIONS[@]}"; do
+  printf '%s\n' "$APPLIED_NAMES" | grep -qxF "$m" || NEED_MIGRATE=1
+done
+
+if [ "$NEED_MIGRATE" -eq 1 ]; then
+  echo "[install] Applying database migrations..."
+  bun run --filter @athena/cms payload migrate
+else
+  echo "[install] Schema up to date (all ${#FILE_MIGRATIONS[@]} migrations applied); skipping migrate."
+fi
+
+echo "[install] Done."
